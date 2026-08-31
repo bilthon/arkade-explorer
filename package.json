@@ -1,0 +1,13 @@
+{
+  "name": "ark-explorer-poc",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Proof-of-concept Arkade batch explorer: tail /v1/txs, enrich commitment txs via the indexer, render the VTXO tree.",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "ingest": "node --experimental-sqlite src/ingest.js",
+    "serve": "node --experimental-sqlite src/server.js",
+    "seed": "node --experimental-sqlite src/ingest.js --seed"
+  }
+}

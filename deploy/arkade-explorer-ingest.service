@@ -1,0 +1,32 @@
+[Unit]
+Description=Arkade Explorer — live batch ingest worker
+Documentation=https://github.com/bilthon/arkade-explorer
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=arkade
+Group=arkade
+WorkingDirectory=/opt/arkade-explorer
+
+# Must match the serve unit: same operator, same shared database file.
+Environment=ARK_URL=https://arkade.computer
+Environment=DB_PATH=/var/lib/arkade-explorer/data.db
+
+# Tails the operator's /v1/txs SSE firehose; reconnects on drop by design.
+ExecStart=/usr/bin/node --experimental-sqlite src/ingest.js
+Restart=always
+RestartSec=3
+
+StateDirectory=arkade-explorer
+
+# Hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/arkade-explorer
+
+[Install]
+WantedBy=multi-user.target

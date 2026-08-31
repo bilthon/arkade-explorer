@@ -1,0 +1,34 @@
+[Unit]
+Description=Arkade Explorer — web server
+Documentation=https://github.com/bilthon/arkade-explorer
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=arkade
+Group=arkade
+WorkingDirectory=/opt/arkade-explorer
+
+# Operator to enrich against, and the shared database written by the ingest worker.
+Environment=ARK_URL=https://arkade.computer
+Environment=DB_PATH=/var/lib/arkade-explorer/data.db
+Environment=PORT=8080
+
+# Adjust the node path to `command -v node` on your VPS if it differs.
+ExecStart=/usr/bin/node --experimental-sqlite src/server.js
+Restart=on-failure
+RestartSec=3
+
+# systemd creates/owns /var/lib/arkade-explorer for the service user.
+StateDirectory=arkade-explorer
+
+# Hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/arkade-explorer
+
+[Install]
+WantedBy=multi-user.target

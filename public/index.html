@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Arkade Batch Explorer — PoC</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <header>
+      <h1>⚓ Arkade Batch Explorer <span class="poc">proof of concept</span></h1>
+      <div id="stats" class="stats"></div>
+    </header>
+
+    <main>
+      <section id="list-pane">
+        <h2>Recent batch commitments</h2>
+        <table id="batches">
+          <thead>
+            <tr><th>commitment txid</th><th>time</th><th class="num">vtxos</th><th class="num">amount</th><th>swept</th></tr>
+          </thead>
+          <tbody id="batches-body">
+            <tr><td colspan="5" class="empty">waiting for batches… run the ingest worker</td></tr>
+          </tbody>
+        </table>
+      </section>
+
+      <section id="detail-pane" hidden>
+        <button id="back">← back</button>
+        <div id="detail"></div>
+      </section>
+    </main>
+    <script src="/app.js" type="module"></script>
+  </body>
+</html>

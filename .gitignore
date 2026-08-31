@@ -1,0 +1,17 @@
+# Local ingested database (regenerated at runtime) — never commit
+data.db
+*.db
+*.db-wal
+*.db-shm
+*.db-journal
+
+# Env / secrets
+.env
+.env.*
+
+# Node
+node_modules/
+
+# OS / editor cruft
+.DS_Store
+*.log

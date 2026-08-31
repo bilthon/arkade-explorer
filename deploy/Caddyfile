@@ -1,0 +1,6 @@
+# Replace explorer.example.com with your domain (DNS A/AAAA record must point here).
+# Caddy provisions and renews TLS automatically.
+explorer.example.com {
+	encode gzip
+	reverse_proxy localhost:8080
+}
