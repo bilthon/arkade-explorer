@@ -79,7 +79,7 @@ async function loadList() {
       `<td class="num">${b.total_output_vtxos}</td>` +
       `<td class="num">${sats(b.total_output_amount)}</td>` +
       `<td class="num">${b.fee != null ? sats(b.fee) : "—"}</td>` +
-      `<td><span class="badge">${b.num_batches} batch${b.num_batches === 1 ? "" : "es"}</span></td>`;
+      `<td>${b.swept ? '<span class="badge swept">swept</span>' : '<span class="badge live">live</span>'}</td>`;
     tr.onclick = () => showDetail(b.txid);
     body.appendChild(tr);
   }
@@ -220,6 +220,7 @@ async function showDetail(txid) {
     card("started", when(b.started_at)) +
     card("duration", b.ended_at && b.started_at ? b.ended_at - b.started_at + "s" : "—") +
     card("block", b.block_height != null ? "#" + b.block_height.toLocaleString() : "unconfirmed") +
+    card("status", b.swept ? "swept" : "live") +
     card("batch outputs", b.num_batches) +
     `</div>`;
 

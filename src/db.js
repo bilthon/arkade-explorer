@@ -33,6 +33,8 @@ for (const [name, type] of [
   ["feerate", "REAL"],
   ["block_height", "INTEGER"],
   ["block_time", "INTEGER"],
+  ["swept", "INTEGER"],
+  ["expires_at", "INTEGER"],
 ]) {
   try {
     db.exec(`ALTER TABLE batches ADD COLUMN ${name} ${type}`);
@@ -44,15 +46,16 @@ for (const [name, type] of [
 const upsert = db.prepare(`
   INSERT INTO batches (txid, network, started_at, ended_at, total_input_amount, total_input_vtxos,
     total_output_amount, total_output_vtxos, num_batches, commitment_json, tree_json, leaves_json, first_seen,
-    fee, vsize, feerate, block_height, block_time)
+    fee, vsize, feerate, block_height, block_time, swept, expires_at)
   VALUES ($txid, $network, $started_at, $ended_at, $total_input_amount, $total_input_vtxos,
     $total_output_amount, $total_output_vtxos, $num_batches, $commitment_json, $tree_json, $leaves_json, $first_seen,
-    $fee, $vsize, $feerate, $block_height, $block_time)
+    $fee, $vsize, $feerate, $block_height, $block_time, $swept, $expires_at)
   ON CONFLICT(txid) DO UPDATE SET
     commitment_json=$commitment_json, tree_json=$tree_json, leaves_json=$leaves_json,
     total_output_amount=$total_output_amount, total_output_vtxos=$total_output_vtxos,
     fee=COALESCE($fee, fee), vsize=COALESCE($vsize, vsize), feerate=COALESCE($feerate, feerate),
-    block_height=COALESCE($block_height, block_height), block_time=COALESCE($block_time, block_time);
+    block_height=COALESCE($block_height, block_height), block_time=COALESCE($block_time, block_time),
+    swept=$swept, expires_at=COALESCE($expires_at, expires_at);
 `);
 
 // Targeted fee update — used by the backfill pass and unconfirmed-tx retries.
@@ -71,6 +74,38 @@ export function listUnpricedBatches() {
     .all();
 }
 
+// Sweep status is time-varying: a batch is captured live, then swept at expiry. This finds
+// batches that have passed expiry but aren't marked swept yet — the ones worth re-checking.
+export function listSweepCandidates(now) {
+  return db
+    .prepare(
+      `SELECT txid, network FROM batches
+       WHERE (swept IS NULL OR swept = 0) AND expires_at IS NOT NULL AND expires_at < ?
+       ORDER BY expires_at ASC`,
+    )
+    .all(now);
+}
+
+const sweepUpdate = db.prepare(`UPDATE batches SET swept=$swept WHERE txid=$txid`);
+
+export function saveSweep(row) {
+  sweepUpdate.run(row);
+}
+
+// Rows whose expiry was never populated (ingested before the column existed). The value is
+// recoverable locally from the stored commitment_json — no network needed.
+export function listRowsMissingExpiry() {
+  return db
+    .prepare(`SELECT txid, commitment_json FROM batches WHERE expires_at IS NULL AND commitment_json IS NOT NULL`)
+    .all();
+}
+
+const expiryUpdate = db.prepare(`UPDATE batches SET swept=$swept, expires_at=$expires_at WHERE txid=$txid`);
+
+export function saveExpiry(row) {
+  expiryUpdate.run(row);
+}
+
 export function saveBatch(row) {
   upsert.run(row);
 }
@@ -79,7 +114,7 @@ export function listBatches(limit = 100, offset = 0) {
   return db
     .prepare(
       `SELECT txid, network, started_at, ended_at, total_output_amount, total_output_vtxos, num_batches,
-              fee, feerate
+              fee, feerate, swept
        FROM batches ORDER BY COALESCE(started_at, first_seen) DESC LIMIT ? OFFSET ?`,
     )
     .all(limit, offset);

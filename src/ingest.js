@@ -11,7 +11,15 @@ import {
   parseBatchKey,
   txStream,
 } from "./arkade.js";
-import { saveBatch, saveFee, listUnpricedBatches } from "./db.js";
+import {
+  saveBatch,
+  saveFee,
+  listUnpricedBatches,
+  saveSweep,
+  listSweepCandidates,
+  listRowsMissingExpiry,
+  saveExpiry,
+} from "./db.js";
 import { esploraBase, getTxFee } from "./esplora.js";
 
 let NETWORK = "unknown";
@@ -29,6 +37,14 @@ async function loadNetwork() {
 
 const toSat = (s) => (s == null ? 0 : Number(s));
 const ts = (s) => (s == null ? null : Number(s));
+
+// Derive sweep status + expiry from a commitment's batch infos. swept: true only once every
+// batch has been reclaimed on-chain. expires_at: the latest batch expiry (unix seconds).
+function sweepInfo(infos) {
+  const swept = infos.length && infos.every((i) => i.swept === true) ? 1 : 0;
+  const exps = infos.map((i) => Number(i.expiresAt)).filter((n) => Number.isFinite(n) && n > 0);
+  return { swept, expires_at: exps.length ? Math.max(...exps) : null };
+}
 
 export async function enrichCommitment(txid) {
   const commitment = await getCommitmentTx(txid);
@@ -57,6 +73,10 @@ export async function enrichCommitment(txid) {
   // On-chain cost: the commitment is a real Bitcoin tx, so its miner fee comes from esplora.
   const fee = await getTxFee(ESPLORA, txid).catch(() => null);
 
+  // Sweep status is time-varying: always live at settlement, swept only once every batch tree
+  // has expired and been reclaimed. Captured live here; `--refresh-sweeps` re-checks expired ones.
+  const { swept, expires_at } = sweepInfo(batchEntries.map(([, info]) => info || {}));
+
   saveBatch({
     txid,
     network: NETWORK,
@@ -76,6 +96,8 @@ export async function enrichCommitment(txid) {
     feerate: fee?.feerate ?? null,
     block_height: fee?.block_height ?? null,
     block_time: fee?.block_time ?? null,
+    swept,
+    expires_at,
   });
 
   const leafCount = leafSets.reduce((n, s) => n + s.leaves.length, 0);
@@ -128,6 +150,48 @@ async function backfillFees() {
   console.log(`[backfill-fees] done: ${priced}/${rows.length} priced`);
 }
 
+// One-shot: re-check batches that have passed their expiry and may now be swept. Cheap —
+// it only revisits expired, not-yet-swept rows, and updates any the operator has reclaimed.
+async function refreshSweeps() {
+  // Hydrate expiry + initial swept from stored commitment_json for rows ingested before these
+  // columns existed (local only, no network). New rows already have this from ingest time.
+  const missing = listRowsMissingExpiry();
+  let hydrated = 0;
+  for (const { txid, commitment_json } of missing) {
+    try {
+      const { swept, expires_at } = sweepInfo(Object.values(JSON.parse(commitment_json).batches || {}));
+      if (expires_at != null) {
+        saveExpiry({ txid, swept, expires_at });
+        hydrated++;
+      }
+    } catch {
+      /* skip unparseable commitment_json */
+    }
+  }
+  if (hydrated) console.log(`[refresh-sweeps] hydrated expiry for ${hydrated} pre-existing rows`);
+
+  const now = Math.floor(Date.now() / 1000);
+  const rows = listSweepCandidates(now);
+  console.log(`[refresh-sweeps] re-checking ${rows.length} expired, not-yet-swept batches via ${ARK_URL}`);
+  let swept = 0;
+  for (let i = 0; i < rows.length; i++) {
+    const { txid } = rows[i];
+    try {
+      const c = await getCommitmentTx(txid);
+      const infos = Object.values(c.batches || {});
+      if (infos.length && infos.every((b) => b.swept === true)) {
+        saveSweep({ txid, swept: 1 });
+        swept++;
+      }
+    } catch (e) {
+      console.error(`[refresh error] ${txid}: ${e.message}`);
+    }
+    if ((i + 1) % 50 === 0) console.log(`  ${i + 1}/${rows.length} (${swept} newly swept)`);
+    await new Promise((r) => setTimeout(r, 80)); // gentle on the indexer
+  }
+  console.log(`[refresh-sweeps] done: ${swept}/${rows.length} newly swept`);
+}
+
 const args = process.argv.slice(2);
 await loadNetwork();
 if (args[0] === "--seed") {
@@ -137,6 +201,9 @@ if (args[0] === "--seed") {
   process.exit(0);
 } else if (args[0] === "--backfill-fees") {
   await backfillFees();
+  process.exit(0);
+} else if (args[0] === "--refresh-sweeps") {
+  await refreshSweeps();
   process.exit(0);
 } else {
   await runWorker();
