@@ -1,0 +1,12 @@
+[Unit]
+Description=Run Arkade Explorer fee + sweep maintenance every 30 minutes
+
+[Timer]
+# First run 5 min after boot, then every 30 min. Persistent catches up a missed run
+# (e.g. if the box was powered off) on the next start.
+OnBootSec=5min
+OnUnitActiveSec=30min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

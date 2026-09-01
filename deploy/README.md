@@ -70,6 +70,29 @@ sudo systemctl reload caddy
 
 Caddy provisions a Let's Encrypt certificate on first request. Visit `https://your-domain`.
 
+## 5. Keep fees and sweep status current (maintenance timer)
+
+Two fields are not final at ingest time: a commitment's **fee** may be unconfirmed when first
+seen, and a batch's **swept** status only flips later, once its VTXO tree expires and the
+operator reclaims it. A systemd timer runs both catch-up passes (`--backfill-fees` and
+`--refresh-sweeps`) every 30 minutes so the explorer stays current with zero manual steps.
+
+```bash
+sudo cp /opt/arkade-explorer/deploy/arkade-explorer-maintenance.{service,timer} /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now arkade-explorer-maintenance.timer
+```
+
+Check it:
+
+```bash
+systemctl list-timers arkade-explorer-maintenance.timer   # next/last run
+journalctl -u arkade-explorer-maintenance.service -f      # watch a pass
+```
+
+Without this timer the deployed explorer would show every batch as `live` forever and leave
+late-confirming fees blank — the passes are what make those two columns trustworthy.
+
 ## Updating
 
 ```bash
