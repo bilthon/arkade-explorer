@@ -50,7 +50,8 @@ async function loadStats() {
       `<span>operator <b>${s.operator.replace(/^https?:\/\//, "")}</b></span>` +
       `<span>batches <b>${s.batches}</b></span>` +
       `<span>vtxos <b>${s.vtxos}</b></span>` +
-      `<span>volume <b>${sats(s.sats)}</b></span>`;
+      `<span>volume <b>${sats(s.sats)}</b></span>` +
+      `<span>fees <b>${sats(s.fees)}</b></span>`;
   } catch {}
 }
 
@@ -65,7 +66,7 @@ async function loadList() {
   if (page > pages) { page = pages; return loadList(); } // clamp if the dataset shrank under us
   const body = $("#batches-body");
   if (!rows.length) {
-    body.innerHTML = `<tr><td colspan="5" class="empty">waiting for batches… run the ingest worker</td></tr>`;
+    body.innerHTML = `<tr><td colspan="6" class="empty">waiting for batches… run the ingest worker</td></tr>`;
     renderPager(total, pages);
     return;
   }
@@ -77,6 +78,7 @@ async function loadList() {
       `<td>${when(b.started_at)}</td>` +
       `<td class="num">${b.total_output_vtxos}</td>` +
       `<td class="num">${sats(b.total_output_amount)}</td>` +
+      `<td class="num">${b.fee != null ? sats(b.fee) : "—"}</td>` +
       `<td><span class="badge">${b.num_batches} batch${b.num_batches === 1 ? "" : "es"}</span></td>`;
     tr.onclick = () => showDetail(b.txid);
     body.appendChild(tr);
@@ -99,6 +101,14 @@ function renderPager(total, pages) {
 
 function card(k, v) {
   return `<div class="card"><div class="k">${k}</div><div class="v">${v}</div></div>`;
+}
+
+// On-chain fee amortized over the batch's vtxos — Arkade's efficiency story. A ~170-sat
+// commitment over 1 vtxo is 170 sats each; over 100 vtxos it's ~1.7 sats each.
+function costPerVtxo(b, c) {
+  const n = c.totalOutputVtxos ?? b.total_output_vtxos;
+  if (b.fee == null || !n) return "—";
+  return (b.fee / n).toFixed(1) + " sats";
 }
 
 // Build a tidy top-down layout from {txid, children:{outIdx:childTxid}} nodes.
@@ -205,8 +215,11 @@ async function showDetail(txid) {
     card("vtxos", c.totalOutputVtxos ?? b.total_output_vtxos) +
     card("output amount", sats(b.total_output_amount)) +
     card("inputs", `${c.totalInputVtxos ?? "—"} · ${sats(b.total_input_amount)}`) +
+    card("fee", b.fee != null ? `${sats(b.fee)} · ${b.feerate != null ? b.feerate.toFixed(2) + " sat/vB" : "—"}` : "—") +
+    card("cost / vtxo", costPerVtxo(b, c)) +
     card("started", when(b.started_at)) +
     card("duration", b.ended_at && b.started_at ? b.ended_at - b.started_at + "s" : "—") +
+    card("block", b.block_height != null ? "#" + b.block_height.toLocaleString() : "unconfirmed") +
     card("batch outputs", b.num_batches) +
     `</div>`;
 

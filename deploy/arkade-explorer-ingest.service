@@ -13,6 +13,8 @@ WorkingDirectory=/opt/arkade-explorer
 # Must match the serve unit: same operator, same shared database file.
 Environment=ARK_URL=https://arkade.computer
 Environment=DB_PATH=/var/lib/arkade-explorer/data.db
+# On-chain fee source (esplora). Defaults to mempool.space for mainnet; uncomment to override.
+# Environment=ESPLORA_URL=https://mempool.space/api
 
 # Tails the operator's /v1/txs SSE firehose; reconnects on drop by design.
 ExecStart=/usr/bin/node --experimental-sqlite src/ingest.js

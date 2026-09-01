@@ -83,6 +83,15 @@ sudo systemctl restart arkade-explorer-ingest.service arkade-explorer-serve.serv
   settle while the ingest worker runs. To seed known commitments up front:
   `sudo -u arkade DB_PATH=/var/lib/arkade-explorer/data.db \
    node --experimental-sqlite /opt/arkade-explorer/src/ingest.js --seed <txid>...`
+- **On-chain fees (external dependency).** The ingest worker also queries an esplora block
+  explorer (`mempool.space` by default) for each commitment's miner fee, so it needs
+  outbound HTTPS **beyond** the Arkade operator. The base URL is network-aware
+  (mainnet → `https://mempool.space/api`, mutinynet → `https://mutinynet.com/api`); override
+  with `ESPLORA_URL=` in the ingest unit. Commitments that aren't found on-chain (unconfirmed,
+  dropped, or RBF-replaced) simply show no fee and are excluded from totals. To price rows
+  that were captured while esplora was unreachable or still unconfirmed:
+  `sudo -u arkade DB_PATH=/var/lib/arkade-explorer/data.db ARK_URL=https://arkade.computer \
+   node --experimental-sqlite /opt/arkade-explorer/src/ingest.js --backfill-fees`
 - **Firewall.** Only 80/443 need to be public (Caddy). The app's own port 8080 can stay
   bound to localhost — it already is, via the reverse proxy.
 - **Reset the data.** Stop both services, delete `/var/lib/arkade-explorer/data.db`, start again.
