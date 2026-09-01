@@ -1,5 +1,7 @@
 # Arkade Batch Explorer — Proof of Concept
 
+**Live instance:** [arkade.bilthon.dev](https://arkade.bilthon.dev)
+
 A mempool.space-style explorer for Arkade batch commitments. It tails the operator's
 public transaction firehose, enriches each commitment transaction via the indexer
 (summary + VTXO tree + per-leaf amounts), and renders it.
