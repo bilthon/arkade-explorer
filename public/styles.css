@@ -74,3 +74,12 @@ svg text { fill: var(--fg); font-family: var(--mono); font-size: 10px; }
 .asm .data { color: var(--fg); }
 .amt { color: var(--green); font-variant-numeric: tabular-nums; }
 small.hint { color: var(--muted); }
+
+.pager { display: flex; align-items: center; justify-content: center; gap: 14px; margin-top: 16px; }
+.pager button {
+  background: var(--panel); color: var(--fg); border: 1px solid var(--border);
+  padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 13px;
+}
+.pager button:hover:not(:disabled) { border-color: var(--accent); }
+.pager button:disabled { opacity: .4; cursor: default; }
+.pager .pageinfo { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }

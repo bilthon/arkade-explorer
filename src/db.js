@@ -39,13 +39,17 @@ export function saveBatch(row) {
   upsert.run(row);
 }
 
-export function listBatches(limit = 100) {
+export function listBatches(limit = 100, offset = 0) {
   return db
     .prepare(
       `SELECT txid, network, started_at, ended_at, total_output_amount, total_output_vtxos, num_batches
-       FROM batches ORDER BY COALESCE(started_at, first_seen) DESC LIMIT ?`,
+       FROM batches ORDER BY COALESCE(started_at, first_seen) DESC LIMIT ? OFFSET ?`,
     )
-    .all(limit);
+    .all(limit, offset);
+}
+
+export function countBatches() {
+  return db.prepare(`SELECT COUNT(*) AS n FROM batches`).get().n;
 }
 
 export function getBatch(txid) {

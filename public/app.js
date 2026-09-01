@@ -54,10 +54,21 @@ async function loadStats() {
   } catch {}
 }
 
+const PAGE_SIZE = 25;
+let page = 1;
+
 async function loadList() {
-  const rows = await api("/api/batches");
+  const data = await api(`/api/batches?page=${page}&limit=${PAGE_SIZE}`);
+  const rows = data.batches || [];
+  const total = data.total || 0;
+  const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  if (page > pages) { page = pages; return loadList(); } // clamp if the dataset shrank under us
   const body = $("#batches-body");
-  if (!rows.length) return;
+  if (!rows.length) {
+    body.innerHTML = `<tr><td colspan="5" class="empty">waiting for batches… run the ingest worker</td></tr>`;
+    renderPager(total, pages);
+    return;
+  }
   body.innerHTML = "";
   for (const b of rows) {
     const tr = document.createElement("tr");
@@ -66,10 +77,24 @@ async function loadList() {
       `<td>${when(b.started_at)}</td>` +
       `<td class="num">${b.total_output_vtxos}</td>` +
       `<td class="num">${sats(b.total_output_amount)}</td>` +
-      `<td><span class="badge ${b.num_batches ? "" : ""}">${b.num_batches} batch${b.num_batches === 1 ? "" : "es"}</span></td>`;
+      `<td><span class="badge">${b.num_batches} batch${b.num_batches === 1 ? "" : "es"}</span></td>`;
     tr.onclick = () => showDetail(b.txid);
     body.appendChild(tr);
   }
+  renderPager(total, pages);
+}
+
+// Prev/Next pager under the list. Hidden entirely when everything fits on one page.
+function renderPager(total, pages) {
+  const el = $("#pager");
+  if (!el) return;
+  if (total <= PAGE_SIZE) { el.innerHTML = ""; return; }
+  el.innerHTML =
+    `<button id="prev" ${page <= 1 ? "disabled" : ""}>← prev</button>` +
+    `<span class="pageinfo">page ${page} of ${pages} · ${total.toLocaleString()} batches</span>` +
+    `<button id="next" ${page >= pages ? "disabled" : ""}>next →</button>`;
+  $("#prev").onclick = () => { if (page > 1) { page--; loadList(); } };
+  $("#next").onclick = () => { if (page < pages) { page++; loadList(); } };
 }
 
 function card(k, v) {
@@ -205,4 +230,9 @@ await loadStats();
 await loadList();
 const m = location.hash.match(/^#batch\/([0-9a-f]{64})/i);
 if (m) showDetail(m[1]).catch(() => {});
-setInterval(() => { if ($("#list-pane").hidden === false) { loadStats(); loadList(); } }, 5000);
+setInterval(() => {
+  if ($("#list-pane").hidden === false) {
+    loadStats();
+    if (page === 1) loadList(); // keep the newest page live; leave deeper pages stable while browsing
+  }
+}, 5000);

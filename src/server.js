@@ -2,7 +2,7 @@ import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { dirname, join, extname } from "node:path";
-import { listBatches, getBatch, stats } from "./db.js";
+import { listBatches, getBatch, stats, countBatches } from "./db.js";
 import { ARK_URL } from "./arkade.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -22,7 +22,11 @@ const server = createServer(async (req, res) => {
     const path = url.pathname;
 
     if (path === "/api/stats") return json(res, { ...stats(), operator: ARK_URL });
-    if (path === "/api/batches") return json(res, listBatches(Number(url.searchParams.get("limit")) || 100));
+    if (path === "/api/batches") {
+      const limit = Math.min(Number(url.searchParams.get("limit")) || 25, 200);
+      const page = Math.max(Number(url.searchParams.get("page")) || 1, 1);
+      return json(res, { total: countBatches(), page, limit, batches: listBatches(limit, (page - 1) * limit) });
+    }
     if (path.startsWith("/api/batch/")) {
       const row = getBatch(path.slice("/api/batch/".length));
       if (!row) return json(res, { error: "not found" }, 404);
