@@ -55,8 +55,8 @@ svg text { fill: var(--fg); font-family: var(--mono); font-size: 10px; }
 .copy:hover { color: var(--accent); }
 .copyable { cursor: pointer; }
 .copyable:hover { color: var(--accent) !important; }
-.node[data-copy] { cursor: pointer; }
-.node[data-copy]:hover rect { fill: #2b333d; }
+.node { cursor: pointer; }
+.tree-wrap a:hover rect { fill: #2b333d; }
 #toast {
   position: fixed; bottom: 24px; left: 50%;
   transform: translateX(-50%) translateY(8px);

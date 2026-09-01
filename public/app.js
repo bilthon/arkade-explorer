@@ -1,6 +1,9 @@
 import { disasmScript } from "/scriptasm.js";
 
 const $ = (s) => document.querySelector(s);
+// Off-chain (virtual) txs in the VTXO tree link out to the Arkade explorer.
+// Change the host if you point this explorer at a different network.
+const ARK_EXPLORER = "https://explorer.arkade.sh";
 const short = (h) => (h ? h.slice(0, 10) + "…" + h.slice(-6) : "");
 const sats = (n) => Number(n || 0).toLocaleString() + " sats";
 const when = (t) => (t ? new Date(t * 1000).toLocaleString() : "—");
@@ -157,9 +160,10 @@ function renderTree(batch) {
   for (const [id, p] of pos) {
     const cls = p.isRoot ? "root" : p.isLeaf ? "leaf" : "";
     boxes +=
-      `<g class="node ${cls}" data-copy="${id}"><title>${id} — click to copy</title>` +
+      `<a href="${ARK_EXPLORER}/tx/${id}" target="_blank" rel="noopener noreferrer">` +
+      `<g class="node ${cls}"><title>${id} — open in Arkade explorer</title>` +
       `<rect x="${p.x - BW / 2}" y="${p.y}" width="${BW}" height="${BH}" rx="5"/>` +
-      `<text x="${p.x}" y="${p.y + 19}" text-anchor="middle">${short(id)}</text></g>`;
+      `<text x="${p.x}" y="${p.y + 19}" text-anchor="middle">${short(id)}</text></g></a>`;
   }
   return `<div class="tree-wrap"><svg width="${width}" height="${height}">${edges}${boxes}</svg></div>`;
 }
