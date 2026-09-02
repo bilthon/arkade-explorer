@@ -16,12 +16,13 @@
     <main>
       <section id="list-pane">
         <h2>Recent batch commitments</h2>
+        <div id="flow-summary"></div>
         <table id="batches">
           <thead>
-            <tr><th>commitment txid</th><th>time</th><th class="num">vtxos</th><th class="num">amount</th><th class="num">fee</th><th>swept</th></tr>
+            <tr><th>commitment txid</th><th>time</th><th class="num">vtxos</th><th class="num">amount</th><th class="num">fee</th><th>swept</th><th>flow</th></tr>
           </thead>
           <tbody id="batches-body">
-            <tr><td colspan="6" class="empty">waiting for batches… run the ingest worker</td></tr>
+            <tr><td colspan="7" class="empty">waiting for batches… run the ingest worker</td></tr>
           </tbody>
         </table>
         <div id="pager" class="pager"></div>

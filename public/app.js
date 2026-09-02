@@ -46,6 +46,45 @@ document.addEventListener(
   true,
 );
 
+// Classify a batch's VTXO flow. We only have net totals (output − input), so we can be *exact*
+// only when one side has zero value — a pure onboard (no inputs) or pure offboard (no outputs).
+// With VTXOs on both sides the gross split is unrecoverable, so we report just the net direction.
+function flowOf(b) {
+  const i = b.total_input_amount, o = b.total_output_amount;
+  if (i == null || o == null) return null;
+  if (i === 0 && o > 0) return { label: "onboard", sign: "+", amt: o, dir: "in", pure: true };
+  if (o === 0 && i > 0) return { label: "offboard", sign: "−", amt: i, dir: "out", pure: true };
+  const d = o - i;
+  if (d === 0) return { label: "renewal", dir: "flat" };
+  if (d > 0) return { label: "net in", sign: "+", amt: d, dir: "in", pure: false };
+  return { label: "net out", sign: "−", amt: -d, dir: "out", pure: false };
+}
+function flowPill(b) {
+  const f = flowOf(b);
+  if (!f) return '<span class="badge">—</span>';
+  if (f.dir === "flat") return '<span class="badge" title="net VTXO flow balanced (renewal)">renewal</span>';
+  const cls = f.dir === "in" ? "onboard" : "offboard";
+  const title = f.pure
+    ? `pure ${f.label} — no VTXOs on the other side, so this amount is exact`
+    : "net VTXO flow — a batch can mix onboard/offboard/renewal; only the net is exposed";
+  return `<span class="badge ${cls}" title="${title}">${f.label} ${f.sign}${f.amt.toLocaleString()}</span>`;
+}
+
+// Aggregate flow bar (from /api/stats counts), shown above the batch list. Classified by net,
+// so the onboard/offboard buckets are labelled "net in" / "net out" to stay honest.
+function renderFlowBar(s) {
+  const el = $("#flow-summary");
+  if (!el) return;
+  const r = s.renewals || 0, on = s.onboards || 0, off = s.offboards || 0, tot = r + on + off;
+  if (!tot) { el.innerHTML = ""; return; }
+  const pct = (n) => ((n / tot) * 100).toFixed(1);
+  const seg = (cls, n) => `<span class="seg ${cls}" style="width:${pct(n)}%"></span>`;
+  const leg = (cls, label, n) => `<span><i class="dot ${cls}"></i>${label} ${n.toLocaleString()} (${pct(n)}%)</span>`;
+  el.innerHTML =
+    `<div class="flowbar" title="batches by net VTXO flow">${seg("renewal", r)}${seg("onboard", on)}${seg("offboard", off)}</div>` +
+    `<div class="flowlegend">${leg("renewal", "renewal", r)}${leg("onboard", "net in", on)}${leg("offboard", "net out", off)}</div>`;
+}
+
 async function loadStats() {
   try {
     const s = await api("/api/stats");
@@ -55,6 +94,7 @@ async function loadStats() {
       `<span>vtxos <b>${s.vtxos}</b></span>` +
       `<span>volume <b>${sats(s.sats)}</b></span>` +
       `<span>fees <b>${sats(s.fees)}</b></span>`;
+    renderFlowBar(s);
   } catch {}
 }
 
@@ -69,7 +109,7 @@ async function loadList() {
   if (page > pages) { page = pages; return loadList(); } // clamp if the dataset shrank under us
   const body = $("#batches-body");
   if (!rows.length) {
-    body.innerHTML = `<tr><td colspan="6" class="empty">waiting for batches… run the ingest worker</td></tr>`;
+    body.innerHTML = `<tr><td colspan="7" class="empty">waiting for batches… run the ingest worker</td></tr>`;
     renderPager(total, pages);
     return;
   }
@@ -82,7 +122,8 @@ async function loadList() {
       `<td class="num">${b.total_output_vtxos}</td>` +
       `<td class="num">${sats(b.total_output_amount)}</td>` +
       `<td class="num">${b.fee != null ? sats(b.fee) : "—"}</td>` +
-      `<td>${b.swept ? '<span class="badge swept">swept</span>' : '<span class="badge live">live</span>'}</td>`;
+      `<td>${b.swept ? '<span class="badge swept">swept</span>' : '<span class="badge live">live</span>'}</td>` +
+      `<td>${flowPill(b)}</td>`;
     tr.onclick = () => showDetail(b.txid);
     body.appendChild(tr);
   }
@@ -218,7 +259,7 @@ async function showDetail(txid) {
     `<div class="summary">` +
     card("vtxos", c.totalOutputVtxos ?? b.total_output_vtxos) +
     card("output amount", sats(b.total_output_amount)) +
-    card("inputs", `${c.totalInputVtxos ?? "—"} · ${sats(b.total_input_amount)}`) +
+    card("input vtxos", `${c.totalInputVtxos ?? "—"} · ${sats(b.total_input_amount)}`) +
     card("fee", b.fee != null ? `${sats(b.fee)} · ${b.feerate != null ? b.feerate.toFixed(2) + " sat/vB" : "—"}` : "—") +
     card("cost / vtxo", costPerVtxo(b, c)) +
     card("started", when(b.started_at)) +

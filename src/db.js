@@ -113,7 +113,7 @@ export function saveBatch(row) {
 export function listBatches(limit = 100, offset = 0) {
   return db
     .prepare(
-      `SELECT txid, network, started_at, ended_at, total_output_amount, total_output_vtxos, num_batches,
+      `SELECT txid, network, started_at, ended_at, total_input_amount, total_output_amount, total_output_vtxos, num_batches,
               fee, feerate, swept
        FROM batches ORDER BY COALESCE(started_at, first_seen) DESC LIMIT ? OFFSET ?`,
     )
@@ -132,7 +132,11 @@ export function stats() {
   return db
     .prepare(
       `SELECT COUNT(*) AS batches, COALESCE(SUM(total_output_vtxos),0) AS vtxos,
-              COALESCE(SUM(total_output_amount),0) AS sats, COALESCE(SUM(fee),0) AS fees FROM batches`,
+              COALESCE(SUM(total_output_amount),0) AS sats, COALESCE(SUM(fee),0) AS fees,
+              SUM(CASE WHEN total_output_amount = total_input_amount THEN 1 ELSE 0 END) AS renewals,
+              SUM(CASE WHEN total_output_amount > total_input_amount THEN 1 ELSE 0 END) AS onboards,
+              SUM(CASE WHEN total_output_amount < total_input_amount THEN 1 ELSE 0 END) AS offboards
+       FROM batches`,
     )
     .get();
 }
