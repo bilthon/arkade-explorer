@@ -257,16 +257,14 @@ async function showDetail(txid) {
   let html =
     `<h2>commitment</h2><div class="mono txid copyable" data-copy="${txid}" title="Click to copy" style="margin-bottom:16px;word-break:break-all">${txid}</div>` +
     `<div class="summary">` +
-    card("vtxos", c.totalOutputVtxos ?? b.total_output_vtxos) +
-    card("output amount", sats(b.total_output_amount)) +
     card("input vtxos", `${c.totalInputVtxos ?? "—"} · ${sats(b.total_input_amount)}`) +
+    card("output vtxos", `${c.totalOutputVtxos ?? b.total_output_vtxos} · ${sats(b.total_output_amount)}`) +
     card("fee", b.fee != null ? `${sats(b.fee)} · ${b.feerate != null ? b.feerate.toFixed(2) + " sat/vB" : "—"}` : "—") +
     card("cost / vtxo", costPerVtxo(b, c)) +
     card("started", when(b.started_at)) +
     card("duration", b.ended_at && b.started_at ? b.ended_at - b.started_at + "s" : "—") +
     card("block", b.block_height != null ? "#" + b.block_height.toLocaleString() : "unconfirmed") +
     card("status", b.swept ? "swept" : "live") +
-    card("batch outputs", b.num_batches) +
     `</div>`;
 
   b.tree_json.forEach((batch, i) => {
