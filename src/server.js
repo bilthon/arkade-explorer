@@ -35,6 +35,7 @@ const server = createServer(async (req, res) => {
         commitment_json: JSON.parse(row.commitment_json || "{}"),
         tree_json: JSON.parse(row.tree_json || "[]"),
         leaves_json: JSON.parse(row.leaves_json || "[]"),
+        input_leaves_json: JSON.parse(row.input_leaves_json || "[]"),
       });
     }
 

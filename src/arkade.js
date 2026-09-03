@@ -38,6 +38,14 @@ export async function getVtxosByOutpoints(outpoints) {
   return out;
 }
 
+// GET /v1/indexer/commitmentTx/{txid}/forfeitTxs -> { txids: [...] }
+// Each forfeit tx spends a user's input VTXO into the batch (the left side of the bow-tie).
+export const getForfeitTxs = (txid) => getJSON(`/v1/indexer/commitmentTx/${txid}/forfeitTxs`);
+
+// GET /v1/indexer/virtualTx/{txids} -> { txs: [base64Psbt, ...] } (comma-joined txids)
+export const getVirtualTxs = (txids) =>
+  txids.length ? getJSON(`/v1/indexer/virtualTx/${txids.join(",")}`) : Promise.resolve({ txs: [] });
+
 // The batches map key encodes the batch output. Seen as "txid:vout"; tolerate a bare vout too.
 export function parseBatchKey(key, commitmentTxid) {
   if (key.includes(":")) {

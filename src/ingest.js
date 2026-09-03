@@ -8,6 +8,8 @@ import {
   getVtxoTree,
   getVtxoTreeLeaves,
   getVtxosByOutpoints,
+  getForfeitTxs,
+  getVirtualTxs,
   parseBatchKey,
   txStream,
 } from "./arkade.js";
@@ -19,7 +21,10 @@ import {
   listSweepCandidates,
   listRowsMissingExpiry,
   saveExpiry,
+  saveInputLeaves,
+  listRowsMissingInputs,
 } from "./db.js";
+import { psbtInputs } from "./psbt.js";
 import { esploraBase, getTxFee } from "./esplora.js";
 
 let NETWORK = "unknown";
@@ -44,6 +49,30 @@ function sweepInfo(infos) {
   const swept = infos.length && infos.every((i) => i.swept === true) ? 1 : 0;
   const exps = infos.map((i) => Number(i.expiresAt)).filter((n) => Number.isFinite(n) && n > 0);
   return { swept, expires_at: exps.length ? Math.max(...exps) : null };
+}
+
+// Rebuild the batch's input VTXOs (bow-tie left side) from its forfeit txs:
+// forfeitTxs → fetch each PSBT → decode inputs → resolve which are VTXOs (connectors drop out).
+async function reconstructInputs(txid) {
+  const { txids = [] } = await getForfeitTxs(txid).catch(() => ({ txids: [] }));
+  if (!txids.length) return [];
+  const { txs = [] } = await getVirtualTxs(txids).catch(() => ({ txs: [] }));
+  const seen = new Set(), outpoints = [];
+  for (const t of txs) {
+    let ins = [];
+    try { ins = psbtInputs(t); } catch { /* skip unparseable forfeit tx */ }
+    for (const o of ins) {
+      const k = `${o.txid}:${o.vout}`;
+      if (!seen.has(k)) { seen.add(k); outpoints.push(o); }
+    }
+  }
+  const vtxos = await getVtxosByOutpoints(outpoints).catch(() => []);
+  return vtxos.map((v) => ({
+    txid: v.outpoint?.txid,
+    vout: v.outpoint?.vout,
+    amount: toSat(v.amount),
+    script: v.script,
+  }));
 }
 
 export async function enrichCommitment(txid) {
@@ -73,6 +102,9 @@ export async function enrichCommitment(txid) {
   // On-chain cost: the commitment is a real Bitcoin tx, so its miner fee comes from esplora.
   const fee = await getTxFee(ESPLORA, txid).catch(() => null);
 
+  // Input VTXOs (bow-tie left side), reconstructed from the batch's forfeit txs.
+  const inputLeaves = await reconstructInputs(txid).catch(() => []);
+
   // Sweep status is time-varying: always live at settlement, swept only once every batch tree
   // has expired and been reclaimed. Captured live here; `--refresh-sweeps` re-checks expired ones.
   const { swept, expires_at } = sweepInfo(batchEntries.map(([, info]) => info || {}));
@@ -98,6 +130,7 @@ export async function enrichCommitment(txid) {
     block_time: fee?.block_time ?? null,
     swept,
     expires_at,
+    input_leaves_json: JSON.stringify(inputLeaves),
   });
 
   const leafCount = leafSets.reduce((n, s) => n + s.leaves.length, 0);
@@ -192,6 +225,27 @@ async function refreshSweeps() {
   console.log(`[refresh-sweeps] done: ${swept}/${rows.length} newly swept`);
 }
 
+// One-shot: reconstruct input VTXOs for batches that don't have them yet (ingested before
+// the bow-tie existed). One forfeitTxs + virtualTx + vtxos round-trip per batch.
+async function backfillInputs() {
+  const rows = listRowsMissingInputs(NETWORK);
+  console.log(`[backfill-inputs] reconstructing inputs for ${rows.length} ${NETWORK} batches via ${ARK_URL}`);
+  let done = 0;
+  for (let i = 0; i < rows.length; i++) {
+    const { txid } = rows[i];
+    try {
+      const inputLeaves = await reconstructInputs(txid);
+      saveInputLeaves({ txid, input_leaves_json: JSON.stringify(inputLeaves) });
+      done++;
+    } catch (e) {
+      console.error(`[backfill-inputs error] ${txid}: ${e.message}`);
+    }
+    if ((i + 1) % 25 === 0) console.log(`  ${i + 1}/${rows.length}`);
+    await new Promise((r) => setTimeout(r, 100)); // gentle on the indexer
+  }
+  console.log(`[backfill-inputs] done: ${done}/${rows.length}`);
+}
+
 const args = process.argv.slice(2);
 await loadNetwork();
 if (args[0] === "--seed") {
@@ -204,6 +258,9 @@ if (args[0] === "--seed") {
   process.exit(0);
 } else if (args[0] === "--refresh-sweeps") {
   await refreshSweeps();
+  process.exit(0);
+} else if (args[0] === "--backfill-inputs") {
+  await backfillInputs();
   process.exit(0);
 } else {
   await runWorker();

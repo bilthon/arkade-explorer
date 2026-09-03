@@ -209,6 +209,65 @@ function renderTree(batch) {
   return `<div class="tree-wrap"><svg width="${width}" height="${height}">${edges}${boxes}</svg></div>`;
 }
 
+// Bow-tie: input VTXOs (reconstructed from forfeits) → commitment → output VTXOs (leaves).
+// Onboards appear as an output with no matching input, offboards as an input with no output;
+// the net difference is balanced with an "on-chain" stub. Ribbon thickness ∝ amount, and
+// styling encodes the layer: solid = on-chain/settled, dashed = off-chain/virtual VTXO flows.
+function renderBowtie(b) {
+  const ins = (b.input_leaves_json || []).map((l) => ({ amt: Number(l.amount || 0), op: `${l.txid}:${l.vout}`, kind: "vtxo" }));
+  const outs = [];
+  for (const set of b.leaves_json || []) for (const l of set.leaves || []) outs.push({ amt: Number(l.amount || 0), op: `${l.txid}:${l.vout}`, kind: "vtxo" });
+  if (!ins.length && !outs.length) return "";
+  // Guard: if the indexer reports input VTXOs but none were reconstructed yet (row not
+  // backfilled), skip — otherwise it would render misleadingly as a pure onboard.
+  if (Number(b.total_input_amount || 0) > 0 && !ins.length) return "";
+  const sumIn = ins.reduce((a, x) => a + x.amt, 0);
+  const sumOut = outs.reduce((a, x) => a + x.amt, 0);
+  const net = sumOut - sumIn;
+  if (net > 0) ins.push({ amt: net, op: "net onboarded from on-chain", kind: "chain" });
+  if (net < 0) outs.push({ amt: -net, op: "net offboarded to on-chain", kind: "chain" });
+  const total = Math.max(sumIn, sumOut, 1);
+
+  const W = 640, boxW = 150, boxH = 26, vgap = 12, padY = 18;
+  const rows = Math.max(ins.length, outs.length);
+  const H = Math.max(140, padY * 2 + rows * boxH + (rows - 1) * vgap);
+  const leftX = 8, rightX = W - boxW - 8, cx = W / 2, cw = 96, ch = 34, cyc = H / 2;
+  const yFor = (i, n) => { const blk = n * boxH + (n - 1) * vgap; return (H - blk) / 2 + i * (boxH + vgap); };
+  const rw = (amt) => Math.max(1.5, (amt / total) * 16);
+
+  let ribbons = "", boxes = "";
+  ins.forEach((n, i) => {
+    const y = yFor(i, ins.length) + boxH / 2, x1 = leftX + boxW, x2 = cx - cw / 2, mx = (x1 + x2) / 2;
+    ribbons += `<path class="ribbon in ${n.kind}" d="M${x1},${y} C${mx},${y} ${mx},${cyc} ${x2},${cyc}" stroke-width="${rw(n.amt)}"/>`;
+  });
+  outs.forEach((n, i) => {
+    const y = yFor(i, outs.length) + boxH / 2, x1 = cx + cw / 2, x2 = rightX, mx = (x1 + x2) / 2;
+    ribbons += `<path class="ribbon out ${n.kind}" d="M${x1},${cyc} C${mx},${cyc} ${mx},${y} ${x2},${y}" stroke-width="${rw(n.amt)}"/>`;
+  });
+  const node = (x, i, n, count) => {
+    const y = yFor(i, count);
+    const label = n.kind === "chain" ? "on-chain" : n.amt.toLocaleString() + " sats";
+    return `<g class="bt-node ${n.kind}"><title>${n.op}</title>` +
+      `<rect x="${x}" y="${y}" width="${boxW}" height="${boxH}" rx="5"/>` +
+      `<text x="${x + boxW / 2}" y="${y + boxH / 2}" text-anchor="middle">${label}</text></g>`;
+  };
+  ins.forEach((n, i) => (boxes += node(leftX, i, n, ins.length)));
+  outs.forEach((n, i) => (boxes += node(rightX, i, n, outs.length)));
+  boxes += `<g class="bt-center"><rect x="${cx - cw / 2}" y="${cyc - ch / 2}" width="${cw}" height="${ch}" rx="5"/>` +
+    `<text x="${cx}" y="${cyc}" text-anchor="middle">commitment</text></g>`;
+
+  const legend =
+    `<div class="bt-legend">` +
+    `<span><i class="line on"></i>on-chain (settled)</span>` +
+    `<span><i class="line dash in"></i>input VTXO (forfeited)</span>` +
+    `<span><i class="line dash out"></i>output VTXO (created)</span>` +
+    `<span class="lg-note">ribbon width ∝ amount</span>` +
+    `</div>`;
+  return `<h2>value flow</h2><div class="bowtie-wrap"><svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${ribbons}${boxes}</svg>` +
+    legend +
+    `<small class="hint">inputs (forfeited VTXOs) ${sats(sumIn)} → outputs (VTXOs) ${sats(sumOut)}</small></div>`;
+}
+
 // Script column: raw hex (copyable) stacked over disassembled ASM (copyable),
 // with long data pushes ellipsized for readability. esplora/mempool ASM convention.
 function scriptCell(hex) {
@@ -266,6 +325,8 @@ async function showDetail(txid) {
     card("block", b.block_height != null ? "#" + b.block_height.toLocaleString() : "unconfirmed") +
     card("status", b.swept ? "swept" : "live") +
     `</div>`;
+
+  html += renderBowtie(b);
 
   b.tree_json.forEach((batch, i) => {
     const leafSet = b.leaves_json[i] || { leaves: [] };

@@ -35,6 +35,7 @@ for (const [name, type] of [
   ["block_time", "INTEGER"],
   ["swept", "INTEGER"],
   ["expires_at", "INTEGER"],
+  ["input_leaves_json", "TEXT"],
 ]) {
   try {
     db.exec(`ALTER TABLE batches ADD COLUMN ${name} ${type}`);
@@ -46,16 +47,17 @@ for (const [name, type] of [
 const upsert = db.prepare(`
   INSERT INTO batches (txid, network, started_at, ended_at, total_input_amount, total_input_vtxos,
     total_output_amount, total_output_vtxos, num_batches, commitment_json, tree_json, leaves_json, first_seen,
-    fee, vsize, feerate, block_height, block_time, swept, expires_at)
+    fee, vsize, feerate, block_height, block_time, swept, expires_at, input_leaves_json)
   VALUES ($txid, $network, $started_at, $ended_at, $total_input_amount, $total_input_vtxos,
     $total_output_amount, $total_output_vtxos, $num_batches, $commitment_json, $tree_json, $leaves_json, $first_seen,
-    $fee, $vsize, $feerate, $block_height, $block_time, $swept, $expires_at)
+    $fee, $vsize, $feerate, $block_height, $block_time, $swept, $expires_at, $input_leaves_json)
   ON CONFLICT(txid) DO UPDATE SET
     commitment_json=$commitment_json, tree_json=$tree_json, leaves_json=$leaves_json,
     total_output_amount=$total_output_amount, total_output_vtxos=$total_output_vtxos,
     fee=COALESCE($fee, fee), vsize=COALESCE($vsize, vsize), feerate=COALESCE($feerate, feerate),
     block_height=COALESCE($block_height, block_height), block_time=COALESCE($block_time, block_time),
-    swept=$swept, expires_at=COALESCE($expires_at, expires_at);
+    swept=$swept, expires_at=COALESCE($expires_at, expires_at),
+    input_leaves_json=COALESCE($input_leaves_json, input_leaves_json);
 `);
 
 // Targeted fee update — used by the backfill pass and unconfirmed-tx retries.
@@ -104,6 +106,26 @@ const expiryUpdate = db.prepare(`UPDATE batches SET swept=$swept, expires_at=$ex
 
 export function saveExpiry(row) {
   expiryUpdate.run(row);
+}
+
+// Input VTXOs (left side of the bow-tie) are reconstructed from forfeit txs — stored separately
+// so they can be backfilled for rows ingested before the bow-tie existed.
+const inputLeavesUpdate = db.prepare(`UPDATE batches SET input_leaves_json=$input_leaves_json WHERE txid=$txid`);
+
+export function saveInputLeaves(row) {
+  inputLeavesUpdate.run(row);
+}
+
+// Filtered by network: reconstruction queries the operator we're pointed at, so backfilling
+// a mixed-network db must only touch rows for that network (else it saves empty inputs for the
+// others and marks them done).
+export function listRowsMissingInputs(network) {
+  return db
+    .prepare(
+      `SELECT txid FROM batches WHERE input_leaves_json IS NULL AND network = ?
+       ORDER BY COALESCE(started_at, first_seen) DESC`,
+    )
+    .all(network);
 }
 
 export function saveBatch(row) {

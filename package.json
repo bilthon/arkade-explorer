@@ -10,6 +10,7 @@
     "serve": "node --experimental-sqlite src/server.js",
     "seed": "node --experimental-sqlite src/ingest.js --seed",
     "backfill-fees": "node --experimental-sqlite src/ingest.js --backfill-fees",
-    "refresh-sweeps": "node --experimental-sqlite src/ingest.js --refresh-sweeps"
+    "refresh-sweeps": "node --experimental-sqlite src/ingest.js --refresh-sweeps",
+    "backfill-inputs": "node --experimental-sqlite src/ingest.js --backfill-inputs"
   }
 }
