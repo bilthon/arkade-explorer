@@ -70,10 +70,10 @@ export function saveFee(row) {
   feeUpdate.run(row);
 }
 
-export function listUnpricedBatches() {
+export function listUnpricedBatches(network) {
   return db
-    .prepare(`SELECT txid FROM batches WHERE fee IS NULL ORDER BY COALESCE(started_at, first_seen) DESC`)
-    .all();
+    .prepare(`SELECT txid FROM batches WHERE fee IS NULL AND network = ? ORDER BY COALESCE(started_at, first_seen) DESC`)
+    .all(network);
 }
 
 // Sweep status is time-varying: a batch is captured live, then swept at expiry. This finds

@@ -163,8 +163,8 @@ async function runWorker() {
 // One-shot: price any batches that don't yet have an on-chain fee (e.g. after a bulk
 // ingest, or for txs that were unconfirmed when first seen). Gentle on the public API.
 async function backfillFees() {
-  const rows = listUnpricedBatches();
-  console.log(`[backfill-fees] pricing ${rows.length} batches via ${ESPLORA}`);
+  const rows = listUnpricedBatches(NETWORK);
+  console.log(`[backfill-fees] pricing ${rows.length} ${NETWORK} batches via ${ESPLORA}`);
   let priced = 0;
   for (let i = 0; i < rows.length; i++) {
     const { txid } = rows[i];
