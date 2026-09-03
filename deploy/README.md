@@ -70,12 +70,14 @@ sudo systemctl reload caddy
 
 Caddy provisions a Let's Encrypt certificate on first request. Visit `https://your-domain`.
 
-## 5. Keep fees and sweep status current (maintenance timer)
+## 5. Keep fees, sweep status, and bow-tie inputs current (maintenance timer)
 
-Two fields are not final at ingest time: a commitment's **fee** may be unconfirmed when first
-seen, and a batch's **swept** status only flips later, once its VTXO tree expires and the
-operator reclaims it. A systemd timer runs both catch-up passes (`--backfill-fees` and
-`--refresh-sweeps`) every 30 minutes so the explorer stays current with zero manual steps.
+Three things need catch-up after ingest: a commitment's **fee** may be unconfirmed when first
+seen, a batch's **swept** status only flips later (once its VTXO tree expires and is reclaimed),
+and the bow-tie **input VTXOs** can be missed on a transient indexer error (or on any batch
+ingested before the feature shipped). A systemd timer runs all three catch-up passes
+(`--backfill-fees`, `--refresh-sweeps`, `--backfill-inputs`) every 30 minutes so the explorer
+stays current with zero manual steps.
 
 ```bash
 sudo cp /opt/arkade-explorer/deploy/arkade-explorer-maintenance.{service,timer} /etc/systemd/system/
@@ -90,14 +92,36 @@ systemctl list-timers arkade-explorer-maintenance.timer   # next/last run
 journalctl -u arkade-explorer-maintenance.service -f      # watch a pass
 ```
 
-Without this timer the deployed explorer would show every batch as `live` forever and leave
-late-confirming fees blank — the passes are what make those two columns trustworthy.
+Without this timer the deployed explorer would show every batch as `live` forever, leave
+late-confirming fees blank, and drop the bow-tie on any batch whose inputs failed the first
+try — the passes are what keep those columns and diagrams trustworthy.
 
 ## Updating
 
 ```bash
 sudo -u arkade git -C /opt/arkade-explorer pull
 sudo systemctl restart arkade-explorer-ingest.service arkade-explorer-serve.service
+```
+
+Node caches modules at process start, so **both services must be restarted** to pick up any
+`src/` change — otherwise the server keeps serving the old API shape and the worker keeps
+ingesting with the old logic (e.g. new batches landing without their bow-tie inputs).
+
+When an update adds a new per-batch field (fees, sweep status, and bow-tie inputs each did),
+**existing rows are filled in retroactively** — automatically by the maintenance timer within
+30 minutes, or immediately with a one-off pass. For the bow-tie inputs:
+
+```bash
+sudo -u arkade ARK_URL=https://arkade.computer DB_PATH=/var/lib/arkade-explorer/data.db \
+  node --experimental-sqlite /opt/arkade-explorer/src/ingest.js --backfill-inputs
+```
+
+If the maintenance `.service` file itself changed (e.g. to add the `--backfill-inputs` pass),
+re-copy it and reload:
+
+```bash
+sudo cp /opt/arkade-explorer/deploy/arkade-explorer-maintenance.service /etc/systemd/system/
+sudo systemctl daemon-reload
 ```
 
 ## Notes
@@ -115,6 +139,10 @@ sudo systemctl restart arkade-explorer-ingest.service arkade-explorer-serve.serv
   that were captured while esplora was unreachable or still unconfirmed:
   `sudo -u arkade DB_PATH=/var/lib/arkade-explorer/data.db ARK_URL=https://arkade.computer \
    node --experimental-sqlite /opt/arkade-explorer/src/ingest.js --backfill-fees`
+- **Bow-tie inputs (extra indexer calls).** Reconstructing each batch's input VTXOs adds a few
+  indexer round-trips per commitment (`forfeitTxs` → virtual tx → `vtxos`). The `--backfill-inputs`
+  pass is network-filtered: it only touches rows whose `network` matches the operator in `ARK_URL`,
+  so it's safe on a single-network deployment and won't poison rows from another network.
 - **Firewall.** Only 80/443 need to be public (Caddy). The app's own port 8080 can stay
   bound to localhost — it already is, via the reverse proxy.
 - **Reset the data.** Stop both services, delete `/var/lib/arkade-explorer/data.db`, start again.

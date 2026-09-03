@@ -14,10 +14,11 @@ WorkingDirectory=/opt/arkade-explorer
 Environment=ARK_URL=https://arkade.computer
 Environment=DB_PATH=/var/lib/arkade-explorer/data.db
 
-# Two catch-up passes. The leading '-' lets each run independently: a failure in one
-# (e.g. a transient esplora error) does not block the other. Adjust the node path if needed.
+# Three catch-up passes. The leading '-' lets each run independently: a failure in one
+# (e.g. a transient indexer/esplora error) does not block the others. Adjust node path if needed.
 ExecStart=-/usr/bin/node --experimental-sqlite src/ingest.js --backfill-fees
 ExecStart=-/usr/bin/node --experimental-sqlite src/ingest.js --refresh-sweeps
+ExecStart=-/usr/bin/node --experimental-sqlite src/ingest.js --backfill-inputs
 
 StateDirectory=arkade-explorer
 
