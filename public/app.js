@@ -246,7 +246,7 @@ function renderBowtie(b) {
   });
   const node = (x, i, n, count) => {
     const y = yFor(i, count);
-    const label = n.kind === "chain" ? "on-chain" : n.amt.toLocaleString() + " sats";
+    const label = n.amt.toLocaleString() + " sats";
     return `<g class="bt-node ${n.kind}"><title>${n.op}</title>` +
       `<rect x="${x}" y="${y}" width="${boxW}" height="${boxH}" rx="5"/>` +
       `<text x="${x + boxW / 2}" y="${y + boxH / 2}" text-anchor="middle">${label}</text></g>`;
