@@ -29,5 +29,6 @@ export async function getTxFee(base, txid) {
     block_height: t.status?.block_height ?? null,
     block_time: t.status?.block_time ?? null,
     confirmed: !!t.status?.confirmed,
+    outputs: (t.vout || []).map((o) => o.value), // on-chain output values (for offboard-fee matching)
   };
 }

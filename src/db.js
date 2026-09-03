@@ -36,6 +36,7 @@ for (const [name, type] of [
   ["swept", "INTEGER"],
   ["expires_at", "INTEGER"],
   ["input_leaves_json", "TEXT"],
+  ["offboard_fee", "INTEGER"],
 ]) {
   try {
     db.exec(`ALTER TABLE batches ADD COLUMN ${name} ${type}`);
@@ -47,17 +48,18 @@ for (const [name, type] of [
 const upsert = db.prepare(`
   INSERT INTO batches (txid, network, started_at, ended_at, total_input_amount, total_input_vtxos,
     total_output_amount, total_output_vtxos, num_batches, commitment_json, tree_json, leaves_json, first_seen,
-    fee, vsize, feerate, block_height, block_time, swept, expires_at, input_leaves_json)
+    fee, vsize, feerate, block_height, block_time, swept, expires_at, input_leaves_json, offboard_fee)
   VALUES ($txid, $network, $started_at, $ended_at, $total_input_amount, $total_input_vtxos,
     $total_output_amount, $total_output_vtxos, $num_batches, $commitment_json, $tree_json, $leaves_json, $first_seen,
-    $fee, $vsize, $feerate, $block_height, $block_time, $swept, $expires_at, $input_leaves_json)
+    $fee, $vsize, $feerate, $block_height, $block_time, $swept, $expires_at, $input_leaves_json, $offboard_fee)
   ON CONFLICT(txid) DO UPDATE SET
     commitment_json=$commitment_json, tree_json=$tree_json, leaves_json=$leaves_json,
     total_output_amount=$total_output_amount, total_output_vtxos=$total_output_vtxos,
     fee=COALESCE($fee, fee), vsize=COALESCE($vsize, vsize), feerate=COALESCE($feerate, feerate),
     block_height=COALESCE($block_height, block_height), block_time=COALESCE($block_time, block_time),
     swept=$swept, expires_at=COALESCE($expires_at, expires_at),
-    input_leaves_json=COALESCE($input_leaves_json, input_leaves_json);
+    input_leaves_json=COALESCE($input_leaves_json, input_leaves_json),
+    offboard_fee=COALESCE($offboard_fee, offboard_fee);
 `);
 
 // Targeted fee update — used by the backfill pass and unconfirmed-tx retries.
@@ -123,6 +125,24 @@ export function listRowsMissingInputs(network) {
   return db
     .prepare(
       `SELECT txid FROM batches WHERE input_leaves_json IS NULL AND network = ?
+       ORDER BY COALESCE(started_at, first_seen) DESC`,
+    )
+    .all(network);
+}
+
+// Operator offboard fee (forfeited VTXO − what the user got on-chain). Computed from stored
+// input/output leaves + the on-chain outputs, so it only applies once inputs are reconstructed.
+const offboardFeeUpdate = db.prepare(`UPDATE batches SET offboard_fee=$offboard_fee WHERE txid=$txid`);
+
+export function saveOffboardFee(row) {
+  offboardFeeUpdate.run(row);
+}
+
+export function listRowsMissingOffboardFee(network) {
+  return db
+    .prepare(
+      `SELECT txid, input_leaves_json, leaves_json FROM batches
+       WHERE offboard_fee IS NULL AND input_leaves_json IS NOT NULL AND network = ?
        ORDER BY COALESCE(started_at, first_seen) DESC`,
     )
     .all(network);

@@ -11,6 +11,7 @@
     "seed": "node --experimental-sqlite src/ingest.js --seed",
     "backfill-fees": "node --experimental-sqlite src/ingest.js --backfill-fees",
     "refresh-sweeps": "node --experimental-sqlite src/ingest.js --refresh-sweeps",
-    "backfill-inputs": "node --experimental-sqlite src/ingest.js --backfill-inputs"
+    "backfill-inputs": "node --experimental-sqlite src/ingest.js --backfill-inputs",
+    "backfill-offboard-fee": "node --experimental-sqlite src/ingest.js --backfill-offboard-fee"
   }
 }

@@ -225,7 +225,12 @@ function renderBowtie(b) {
   const sumOut = outs.reduce((a, x) => a + x.amt, 0);
   const net = sumOut - sumIn;
   if (net > 0) ins.push({ amt: net, op: "net onboarded from on-chain", kind: "chain" });
-  if (net < 0) outs.push({ amt: -net, op: "net offboarded to on-chain", kind: "chain" });
+  if (net < 0) {
+    const off = -net; // total value that left the VTXO pool
+    const fee = Math.min(Number(b.offboard_fee || 0), off);
+    outs.push({ amt: off - fee, op: "net offboarded to on-chain", kind: "chain" });
+    if (fee > 0) outs.push({ amt: fee, op: "operator offboard fee", kind: "fee" });
+  }
   const total = Math.max(sumIn, sumOut, 1);
 
   const W = 640, boxW = 150, boxH = 26, vgap = 12, padY = 18;
@@ -256,11 +261,13 @@ function renderBowtie(b) {
   boxes += `<g class="bt-center"><rect x="${cx - cw / 2}" y="${cyc - ch / 2}" width="${cw}" height="${ch}" rx="5"/>` +
     `<text x="${cx}" y="${cyc}" text-anchor="middle">commitment</text></g>`;
 
+  const hasFee = outs.some((o) => o.kind === "fee");
   const legend =
     `<div class="bt-legend">` +
     `<span><i class="line on"></i>on-chain (settled)</span>` +
     `<span><i class="line dash in"></i>input VTXO (forfeited)</span>` +
     `<span><i class="line dash out"></i>output VTXO (created)</span>` +
+    (hasFee ? `<span><i class="line fee"></i>operator fee</span>` : "") +
     `<span class="lg-note">ribbon width ∝ amount</span>` +
     `</div>`;
   return `<h2>value flow</h2><div class="bowtie-wrap"><svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${ribbons}${boxes}</svg>` +

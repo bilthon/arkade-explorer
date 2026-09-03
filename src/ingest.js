@@ -23,21 +23,43 @@ import {
   saveExpiry,
   saveInputLeaves,
   listRowsMissingInputs,
+  saveOffboardFee,
+  listRowsMissingOffboardFee,
 } from "./db.js";
 import { psbtInputs } from "./psbt.js";
 import { esploraBase, getTxFee } from "./esplora.js";
 
 let NETWORK = "unknown";
 let ESPLORA = esploraBase(NETWORK);
+let OFFBOARD_RATE = 0; // operator's flat fee per on-chain output (offboard), from /v1/info
 
 async function loadNetwork() {
   try {
     const info = await fetch(`${ARK_URL}/v1/info`).then((r) => r.json());
     NETWORK = info.network || "unknown";
+    OFFBOARD_RATE = Number(info?.fees?.intentFee?.onchainOutput) || 0;
   } catch {
-    /* leave as unknown */
+    /* leave defaults */
   }
   ESPLORA = esploraBase(NETWORK);
+}
+
+// Total operator offboard fee for a batch: for each forfeited input VTXO that left to on-chain,
+// the gap between its value and its on-chain output. Uses the advertised flat rate for exact
+// matching (an output of V for a free offboard, or V−rate when charged); skips what it can't
+// match rather than guess (so it under-reports rather than invents a fee).
+function computeOffboardFee(inAmts, outAmts, onchain, rate) {
+  const outs = [...outAmts], chain = [...onchain];
+  let fee = 0;
+  for (const v of inAmts) {
+    const ri = outs.indexOf(v);
+    if (ri >= 0) { outs.splice(ri, 1); continue; } // renewed → no fee
+    let ci = rate > 0 ? chain.indexOf(v - rate) : -1;
+    if (ci >= 0) { fee += rate; chain.splice(ci, 1); continue; } // offboard, fee charged
+    ci = chain.indexOf(v);
+    if (ci >= 0) chain.splice(ci, 1); // offboard, no fee taken
+  }
+  return fee;
 }
 
 const toSat = (s) => (s == null ? 0 : Number(s));
@@ -105,6 +127,14 @@ export async function enrichCommitment(txid) {
   // Input VTXOs (bow-tie left side), reconstructed from the batch's forfeit txs.
   const inputLeaves = await reconstructInputs(txid).catch(() => []);
 
+  // Operator offboard fee: forfeited VTXO minus what the user actually received on-chain.
+  const offboard_fee = computeOffboardFee(
+    inputLeaves.map((l) => l.amount),
+    leafSets.flatMap((s) => s.leaves.map((l) => l.amount)),
+    fee?.outputs || [],
+    OFFBOARD_RATE,
+  );
+
   // Sweep status is time-varying: always live at settlement, swept only once every batch tree
   // has expired and been reclaimed. Captured live here; `--refresh-sweeps` re-checks expired ones.
   const { swept, expires_at } = sweepInfo(batchEntries.map(([, info]) => info || {}));
@@ -131,6 +161,7 @@ export async function enrichCommitment(txid) {
     swept,
     expires_at,
     input_leaves_json: JSON.stringify(inputLeaves),
+    offboard_fee,
   });
 
   const leafCount = leafSets.reduce((n, s) => n + s.leaves.length, 0);
@@ -246,6 +277,30 @@ async function backfillInputs() {
   console.log(`[backfill-inputs] done: ${done}/${rows.length}`);
 }
 
+// One-shot: compute the operator offboard fee for batches that have inputs reconstructed but
+// no fee computed yet. Needs the on-chain outputs (one esplora call per batch).
+async function backfillOffboardFees() {
+  const rows = listRowsMissingOffboardFee(NETWORK);
+  console.log(`[backfill-offboard-fee] computing for ${rows.length} ${NETWORK} batches (rate ${OFFBOARD_RATE})`);
+  let done = 0;
+  for (let i = 0; i < rows.length; i++) {
+    const { txid, input_leaves_json, leaves_json } = rows[i];
+    try {
+      const f = await getTxFee(ESPLORA, txid);
+      if (!f) continue; // no on-chain outputs available yet; retry later
+      const inAmts = JSON.parse(input_leaves_json || "[]").map((l) => l.amount);
+      const outAmts = JSON.parse(leaves_json || "[]").flatMap((s) => (s.leaves || []).map((l) => l.amount));
+      saveOffboardFee({ txid, offboard_fee: computeOffboardFee(inAmts, outAmts, f.outputs || [], OFFBOARD_RATE) });
+      done++;
+    } catch (e) {
+      console.error(`[backfill-offboard-fee error] ${txid}: ${e.message}`);
+    }
+    if ((i + 1) % 25 === 0) console.log(`  ${i + 1}/${rows.length}`);
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  console.log(`[backfill-offboard-fee] done: ${done}/${rows.length}`);
+}
+
 const args = process.argv.slice(2);
 await loadNetwork();
 if (args[0] === "--seed") {
@@ -261,6 +316,9 @@ if (args[0] === "--seed") {
   process.exit(0);
 } else if (args[0] === "--backfill-inputs") {
   await backfillInputs();
+  process.exit(0);
+} else if (args[0] === "--backfill-offboard-fee") {
+  await backfillOffboardFees();
   process.exit(0);
 } else {
   await runWorker();

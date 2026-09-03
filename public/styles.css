@@ -58,12 +58,15 @@ tbody tr:hover { background: var(--panel); }
 .ribbon.in { stroke: var(--accent2); }
 .ribbon.out { stroke: var(--green); }
 .ribbon.chain { stroke: var(--accent); stroke-dasharray: none; opacity: .85; }
+.bt-node.fee rect { fill: transparent; stroke: #f85149; }
+.ribbon.fee { stroke: #f85149; stroke-dasharray: none; opacity: .85; }
 .bt-legend { display: flex; flex-wrap: wrap; gap: 16px; font-size: 12px; color: var(--muted); margin-top: 10px; }
 .bt-legend i.line { display: inline-block; width: 18px; height: 0; border-top: 2px solid; margin-right: 6px; vertical-align: middle; }
 .bt-legend i.line.dash { border-top-style: dashed; }
 .bt-legend i.line.on { border-top-color: var(--accent); }
 .bt-legend i.line.in { border-top-color: var(--accent2); }
 .bt-legend i.line.out { border-top-color: var(--green); }
+.bt-legend i.line.fee { border-top-color: #f85149; }
 .bt-legend .lg-note { font-style: italic; }
 
 #back { background: var(--panel); color: var(--fg); border: 1px solid var(--border);
