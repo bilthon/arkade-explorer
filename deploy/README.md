@@ -72,12 +72,13 @@ Caddy provisions a Let's Encrypt certificate on first request. Visit `https://yo
 
 ## 5. Keep fees, sweep status, and bow-tie inputs current (maintenance timer)
 
-Three things need catch-up after ingest: a commitment's **fee** may be unconfirmed when first
+Four things need catch-up after ingest: a commitment's **fee** may be unconfirmed when first
 seen, a batch's **swept** status only flips later (once its VTXO tree expires and is reclaimed),
-and the bow-tie **input VTXOs** can be missed on a transient indexer error (or on any batch
-ingested before the feature shipped). A systemd timer runs all three catch-up passes
-(`--backfill-fees`, `--refresh-sweeps`, `--backfill-inputs`) every 30 minutes so the explorer
-stays current with zero manual steps.
+the bow-tie **input VTXOs** can be missed on a transient indexer error (or on any batch ingested
+before the feature shipped), and the **offboard fee** is derived from those inputs once they
+exist. A systemd timer runs all four catch-up passes (`--backfill-fees`, `--refresh-sweeps`,
+`--backfill-inputs`, `--backfill-offboard-fee`) every 30 minutes so the explorer stays current
+with zero manual steps.
 
 ```bash
 sudo cp /opt/arkade-explorer/deploy/arkade-explorer-maintenance.{service,timer} /etc/systemd/system/

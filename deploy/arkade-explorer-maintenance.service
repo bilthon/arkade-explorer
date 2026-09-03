@@ -14,11 +14,13 @@ WorkingDirectory=/opt/arkade-explorer
 Environment=ARK_URL=https://arkade.computer
 Environment=DB_PATH=/var/lib/arkade-explorer/data.db
 
-# Three catch-up passes. The leading '-' lets each run independently: a failure in one
+# Four catch-up passes. The leading '-' lets each run independently: a failure in one
 # (e.g. a transient indexer/esplora error) does not block the others. Adjust node path if needed.
+# offboard-fee runs last because it depends on inputs having been reconstructed.
 ExecStart=-/usr/bin/node --experimental-sqlite src/ingest.js --backfill-fees
 ExecStart=-/usr/bin/node --experimental-sqlite src/ingest.js --refresh-sweeps
 ExecStart=-/usr/bin/node --experimental-sqlite src/ingest.js --backfill-inputs
+ExecStart=-/usr/bin/node --experimental-sqlite src/ingest.js --backfill-offboard-fee
 
 StateDirectory=arkade-explorer
 
